@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react';
 import { User, Key, Bell } from 'lucide-react';
 import { useUser } from '@/hooks/useUser';
+import { createBrowserClient } from '@supabase/ssr';
 
 export default function SettingsPage() {
-  const { user, profile, signOut } = useUser();
+  const { user, profile } = useUser();
   const [fullName, setFullName] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -25,6 +26,20 @@ export default function SettingsPage() {
       setMessage('Failed to update profile.');
     }
     setSaving(false);
+  };
+
+  const handleLogout = async () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to sign out?'
+    );
+    if (!confirmed) return;
+
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+    await supabase.auth.signOut();
+    window.location.href = '/';
   };
 
   return (
@@ -82,7 +97,7 @@ export default function SettingsPage() {
           Sign out from your account. Your data will be preserved.
         </p>
         <button
-          onClick={signOut}
+          onClick={handleLogout}
           className="px-4 py-2 border border-danger/50 text-danger hover:bg-danger/10 rounded-lg text-sm transition-colors"
         >
           Sign Out

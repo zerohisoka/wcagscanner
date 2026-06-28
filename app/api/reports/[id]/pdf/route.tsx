@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { renderToBuffer } from '@react-pdf/renderer';
+import React from 'react';
+import { WCAGReportPDF } from '@/lib/pdf/generator';
 
 export async function GET(
   request: NextRequest,
@@ -13,13 +16,14 @@ export async function GET(
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    const { data: report } = await supabase
-      .from('reports')
-      .select('*, scans:scan_id(*) ')
+    // Fetch scan data
+    const { data: scan } = await supabase
+      .from('scans')
+      .select('*')
       .eq('id', params.id)
       .single();
 
-    if (!report || (report.user_id !== user.id && !report.is_public)) {
+    if (!scan || (scan.user_id !== user.id)) {
       return NextResponse.json({ error: 'Report not found' }, { status: 404 });
     }
 
@@ -27,11 +31,13 @@ export async function GET(
     const { data: violations } = await supabase
       .from('violations')
       .select('*')
-      .eq('scan_id', report.scan_id)
+      .eq('scan_id', params.id)
       .order('impact', { ascending: false });
 
-    // Generate PDF
-    const pdfBuffer = await generatePDF(report, violations || []);
+    // Generate PDF using @react-pdf/renderer
+    const pdfBuffer = await renderToBuffer(
+      React.createElement(WCAGReportPDF, { scan, violations: violations || [] })
+    );
 
     return new NextResponse(pdfBuffer, {
       headers: {
@@ -40,11 +46,7 @@ export async function GET(
       },
     });
   } catch (error: any) {
+    console.error('PDF generation error:', error);
     return NextResponse.json({ error: error?.message || 'Server error' }, { status: 500 });
   }
-}
-
-async function generatePDF(report: any, violations: any[]): Promise<Buffer> {
-  const pdfGenerator = await import('@/lib/pdf/generator');
-  return pdfGenerator.generatePDFReport(report, violations);
 }

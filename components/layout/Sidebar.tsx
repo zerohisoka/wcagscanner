@@ -16,6 +16,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useUser } from '@/hooks/useUser';
 import { useSubscription } from '@/hooks/useSubscription';
+import { createBrowserClient } from '@supabase/ssr';
 
 interface Props {
   onClose?: () => void;
@@ -23,8 +24,17 @@ interface Props {
 
 export default function Sidebar({ onClose }: Props) {
   const pathname = usePathname();
-  const { user, signOut } = useUser();
+  const { user } = useUser();
   const { plan } = useSubscription();
+
+  const handleLogout = async () => {
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+    await supabase.auth.signOut();
+    window.location.href = '/';
+  };
 
   const links = [
     { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
@@ -96,7 +106,7 @@ export default function Sidebar({ onClose }: Props) {
         )}
 
         <button
-          onClick={signOut}
+          onClick={handleLogout}
           className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-text-secondary hover:text-danger hover:bg-danger/5 transition-colors"
         >
           <LogOut className="w-5 h-5" />

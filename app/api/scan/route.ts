@@ -10,20 +10,18 @@ const scanRequestSchema = z.object({
   wcag_level: z.enum(['A', 'AA', 'AAA']).optional().default('AA'),
 });
 
-// Simple in-memory rate limiter
-const rateLimitMap = new Map<string, number>();
-const RATE_LIMIT_WINDOW = 60_000;
-const MAX_REQUESTS_PER_WINDOW = 10;
-
 export async function POST(request: NextRequest) {
   try {
     // ── Auth client (respects RLS) ── used ONLY for reading user session
     const authClient = await createClient();
 
-    // Rate limiting
-    const ip = request.headers.get('x-forwarded-for') || 'unknown';
-    const now = Date.now();
-    rateLimitMap.set(ip, now);
+    // ── Service client (bypasses RLS) ── used for ALL DB writes
+    const db = createServiceClient();
+
+    // Get IP for tracking
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+      || request.headers.get('x-real-ip')
+      || '0.0.0.0';
 
     // Parse and validate
     const body = await request.json();
@@ -42,9 +40,7 @@ export async function POST(request: NextRequest) {
     let userId: string | null = user?.id || null;
     let planLimits = PLANS.free.limits;
     let currentCount = 0;
-
-    // ── Service client (bypasses RLS) ── used for ALL DB writes
-    const db = createServiceClient();
+    let isAnonymous = !userId;
 
     if (user) {
       // Check user limits
@@ -69,10 +65,28 @@ export async function POST(request: NextRequest) {
           );
         }
       }
+    } else {
+      // ── Anonymous / free user — check free_scan_usage by IP ──
+      const { data: usage } = await db
+        .from('free_scan_usage')
+        .select('id')
+        .eq('ip_address', ip)
+        .gte('scanned_at', new Date(Date.now() - 86_400_000).toISOString())
+        .limit(1);
+
+      if (usage && usage.length > 0) {
+        return NextResponse.json(
+          { error: 'Free scan limit reached. Sign up for more scans.' },
+          { status: 429 }
+        );
+      }
+
+      // Record this free scan
+      await db.from('free_scan_usage').insert({ ip_address: ip, url });
     }
 
-    // Cap pages to plan limit server-side
-    const cappedPages = Math.min(max_pages, planLimits.pagesPerScan);
+    // Anonymous: cap to 1 page
+    const cappedPages = isAnonymous ? 1 : Math.min(max_pages, planLimits.pagesPerScan);
 
     // Insert scan record (service role bypasses RLS)
     const scanId = crypto.randomUUID();
@@ -100,7 +114,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Trigger the scan asynchronously (fire and forget)
-    triggerScan(scanId, url, cappedPages, wcag_level).catch(console.error);
+    triggerScan(scanId, url, cappedPages, wcag_level, isAnonymous, user?.email).catch(console.error);
 
     return NextResponse.json({
       scan_id: scanId,
@@ -120,7 +134,9 @@ async function triggerScan(
   scanId: string,
   url: string,
   maxPages: number,
-  wcagLevel: 'A' | 'AA' | 'AAA'
+  wcagLevel: 'A' | 'AA' | 'AAA',
+  isAnonymous: boolean = false,
+  userEmail?: string | null,
 ) {
   // Service client — background writes bypass RLS
   const db = createServiceClient();
@@ -133,7 +149,7 @@ async function triggerScan(
     const { runScan } = await import('@/lib/scanner/engine');
     const result = await runScan(url);
 
-    // Update scan record with new flat ScanResult structure
+    // Update scan record
     const { error: updateError } = await db
       .from('scans')
       .update({
@@ -155,7 +171,7 @@ async function triggerScan(
       console.error('Failed to update scan:', updateError);
     }
 
-    // Insert violations — mapped from new ScanViolation structure
+    // Insert violations
     if (result.violations.length > 0) {
       const violationsToInsert = result.violations.map((v: any) => ({
         scan_id: scanId,
@@ -180,6 +196,25 @@ async function triggerScan(
         console.error('Failed to insert violations:', violationsError);
       }
     }
+
+    // Send email notification for authenticated users
+    if (userEmail && !isAnonymous) {
+      try {
+        const { sendScanCompleteEmail } = await import('@/lib/email/resend');
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wcag-scanner-tau.vercel.app';
+        await sendScanCompleteEmail(
+          userEmail,
+          url,
+          result.score,
+          result.totalViolations,
+          scanId,
+          appUrl
+        );
+      } catch (emailErr) {
+        console.error('Failed to send scan complete email:', emailErr);
+      }
+    }
+
   } catch (error) {
     console.error('Scan failed:', error);
     await db
