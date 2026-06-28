@@ -150,7 +150,12 @@ export async function runScan(params: RunScanParams): Promise<ScanOutput> {
 
   try {
     browser = await puppeteer.launch({
-      args: chromium.args,
+      args: [
+        ...chromium.args,
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins',
+        '--disable-site-isolation-trials'
+      ],
       defaultViewport: { width: 1280, height: 720 },
       executablePath: await chromium.executablePath(
         'https://github.com/Sparticuz/chromium/releases/download/v127.0.0/chromium-v127.0.0-pack.tar'
@@ -173,31 +178,24 @@ export async function runScan(params: RunScanParams): Promise<ScanOutput> {
           timeout: SCAN_TIMEOUT,
         });
 
-        // Inject axe-core
+        // Inject axe-core source directly
         const axeSource = require('axe-core').source
         await page.addScriptTag({ content: axeSource })
 
-        // Run axe
-        const results: AxeResult = await page.evaluate(
-          (level: string) => {
-            const axeConfig: any = {
-              runOnly: {
-                type: 'tag',
-                values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'],
-              },
-            };
-            if (level === 'A') {
-              axeConfig.runOnly.values = ['wcag2a', 'wcag21a'];
-            } else if (level === 'AA') {
-              axeConfig.runOnly.values = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
-            } else if (level === 'AAA') {
-              axeConfig.runOnly.values = ['wcag2a', 'wcag2aa', 'wcag2aaa', 'wcag21a', 'wcag21aa'];
+        // Wait for axe to be available on window
+        await page.waitForFunction(() => typeof (window as any).axe !== 'undefined', {
+          timeout: 10000
+        })
+
+        // Run axe evaluation
+        const results = await page.evaluate(async () => {
+          return await (window as any).axe.run(document, {
+            runOnly: {
+              type: 'tag',
+              values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']
             }
-            // @ts-ignore
-            return (window as any).axe.run(axeConfig);
-          },
-          wcagLevel
-        );
+          })
+        })
 
         return { results, pageUrl };
       } finally {
