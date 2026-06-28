@@ -4,8 +4,6 @@ import { getFixGuide, getFixGuideDescription } from './violations';
 import { discoverPages } from './crawler';
 import puppeteer from 'puppeteer-core'
 import chromium from '@sparticuz/chromium-min'
-import fs from 'fs'
-import path from 'path'
 
 const SCAN_TIMEOUT = 30000;
 
@@ -150,17 +148,14 @@ export async function runScan(params: RunScanParams): Promise<ScanOutput> {
   let browser: any = null;
   let pagesScanned = 0;
 
-  // Read axe-core content at runtime
-  const axePath = path.join(process.cwd(), 'node_modules', 'axe-core', 'axe.min.js')
-  const axeSource = fs.readFileSync(axePath, 'utf8')
-
   try {
     browser = await puppeteer.launch({
       args: [
         ...chromium.args,
         '--disable-web-security',
-        '--disable-features=IsolateOrigins',
-        '--disable-site-isolation-trials'
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
       ],
       defaultViewport: { width: 1280, height: 720 },
       executablePath: await chromium.executablePath(
@@ -179,32 +174,39 @@ export async function runScan(params: RunScanParams): Promise<ScanOutput> {
           'Mozilla/5.0 (compatible; WCAGScanner/1.0; +https://wcagscanner.com)'
         );
 
+        // Disable CSP to allow external script injection
+        await page.setBypassCSP(true)
+
         await page.goto(pageUrl, {
           waitUntil: 'networkidle2',
           timeout: SCAN_TIMEOUT,
         });
 
-        // Wait for page to fully load
-        await page.waitForTimeout(2000)
+        // Wait for page to settle
+        await new Promise(resolve => setTimeout(resolve, 1500))
 
-        // Inject axe as a script tag with content
-        await page.addScriptTag({ content: axeSource })
-
-        // Verify axe loaded
-        const axeLoaded = await page.evaluate(() => {
-          return typeof (window as any).axe !== 'undefined'
+        // Inject axe-core from CDN
+        await page.addScriptTag({
+          url: 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.9.1/axe.min.js'
         })
 
-        console.log('Axe loaded:', axeLoaded)
+        // Wait for axe to be ready
+        await page.waitForFunction(
+          () => typeof (window as any).axe !== 'undefined',
+          { timeout: 15000 }
+        )
 
-        if (!axeLoaded) {
-          throw new Error('axe-core failed to load on page')
-        }
-
-        // Run axe
+        // Run the scan
         const results = await page.evaluate(async () => {
-          return await (window as any).axe.run()
+          return await (window as any).axe.run(document, {
+            runOnly: {
+              type: 'tag',
+              values: ['wcag2a', 'wcag2aa', 'wcag21aa']
+            }
+          })
         })
+
+        console.log('Scan complete, violations:', results.violations.length)
 
         return { results, pageUrl };
       } finally {
