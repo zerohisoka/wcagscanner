@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { renderToBuffer } from '@react-pdf/renderer';
-import React from 'react';
 import { WCAGReportPDF } from '@/lib/pdf/generator';
 
 export async function GET(
@@ -34,12 +33,17 @@ export async function GET(
       .eq('scan_id', params.id)
       .order('impact', { ascending: false });
 
+    const safeViolations = violations || [];
+
     // Generate PDF using @react-pdf/renderer
     const pdfBuffer = await renderToBuffer(
-      React.createElement(WCAGReportPDF, { scan, violations: violations || [] })
+      <WCAGReportPDF
+        scan={scan}
+        violations={safeViolations as any}
+      />
     );
 
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="wcag-report-${params.id.slice(0, 8)}.pdf"`,

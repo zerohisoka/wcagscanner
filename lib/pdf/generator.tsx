@@ -6,6 +6,7 @@ import {
   View,
   StyleSheet,
   Font,
+  renderToBuffer,
 } from '@react-pdf/renderer';
 
 // Register a font (use built-in Helvetica for compatibility)
@@ -196,12 +197,14 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-interface Props {
+import { DocumentProps } from '@react-pdf/renderer';
+
+interface Props extends DocumentProps {
   scan: any;
   violations: any[];
 }
 
-export function WCAGReportPDF({ scan, violations }: Props) {
+export function WCAGReportPDF({ scan, violations, ...docProps }: Props) {
   const score = scan.compliance_score || 0;
   const scoreColor = getScoreColor(score);
   const completedAt = scan.completed_at || scan.created_at || '';
@@ -226,7 +229,7 @@ export function WCAGReportPDF({ scan, violations }: Props) {
   );
 
   return (
-    <Document>
+    <Document {...docProps}>
       {/* Cover Page */}
       <Page size="A4" style={[styles.page, styles.coverPage]}>
         <Text style={styles.logoText}>WCAG Scanner</Text>
