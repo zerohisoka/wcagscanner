@@ -51,23 +51,23 @@ export async function runScan(url: string) {
       return new Promise<string>((resolve, reject) => {
         window.axe.run(
           { runOnly: ['wcag2a', 'wcag2aa'] },
-          function(err, results) {
+          function(err: any, results: any) {
             if (err) return reject(err.toString())
             
             try {
               var output = {
                 url: results.url,
-                violations: results.violations.map(function(v) {
+                violations: results.violations.map(function(v: any) {
                   return {
                     id: v.id,
                     impact: v.impact || 'minor',
                     description: v.description,
                     help: v.help,
                     helpUrl: v.helpUrl,
-                    nodes: v.nodes.slice(0, 3).map(function(n) {
+                    nodes: v.nodes.slice(0, 3).map(function(n: any) {
                       return {
                         html: (n.html || '').substring(0, 300),
-                        target: n.target.map(function(t) {
+                        target: n.target.map(function(t: any) {
                           return typeof t === 'string' ? t : String(t)
                         }),
                         failureSummary: n.failureSummary || ''
@@ -78,7 +78,7 @@ export async function runScan(url: string) {
                 passes: results.passes.length
               }
               resolve(JSON.stringify(output))
-            } catch(e) {
+            } catch(e: any) {
               reject(e.toString())
             }
           }
@@ -95,7 +95,7 @@ export async function runScan(url: string) {
     let moderate = 0
     let minor = 0
 
-    violations.forEach(function(v) {
+    violations.forEach(function(v: any) {
       if (v.impact === 'critical') { critical++; deductions += 8 }
       else if (v.impact === 'serious') { serious++; deductions += 4 }
       else if (v.impact === 'moderate') { moderate++; deductions += 2 }
@@ -115,12 +115,12 @@ export async function runScan(url: string) {
       moderate,
       minor,
       bigSix: {
-        contrast: violations.filter(function(v) { return v.id === 'color-contrast' }).length,
-        altText: violations.filter(function(v) { return v.id === 'image-alt' }).length,
-        labels: violations.filter(function(v) { return v.id === 'label' }).length,
-        links: violations.filter(function(v) { return v.id === 'link-name' }).length,
-        buttons: violations.filter(function(v) { return v.id === 'button-name' }).length,
-        language: violations.filter(function(v) { return v.id === 'html-has-lang' }).length,
+        contrast: violations.filter(function(v: any) { return v.id === 'color-contrast' }).length,
+        altText: violations.filter(function(v: any) { return v.id === 'image-alt' }).length,
+        labels: violations.filter(function(v: any) { return v.id === 'label' }).length,
+        links: violations.filter(function(v: any) { return v.id === 'link-name' }).length,
+        buttons: violations.filter(function(v: any) { return v.id === 'button-name' }).length,
+        language: violations.filter(function(v: any) { return v.id === 'html-has-lang' }).length,
       }
     }
 

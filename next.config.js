@@ -5,9 +5,11 @@ const nextConfig = {
       { protocol: 'https', hostname: '**' },
     ],
   },
-  serverComponentsExternalPackages: [
-    'puppeteer-core',
-  ],
+  experimental: {
+    serverComponentsExternalPackages: [
+      'puppeteer-core',
+    ],
+  },
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
