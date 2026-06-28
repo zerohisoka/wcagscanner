@@ -7,7 +7,6 @@ const nextConfig = {
   },
   serverComponentsExternalPackages: [
     'puppeteer-core',
-    '@sparticuz/chromium-min'
   ],
   webpack: (config, { isServer }) => {
     if (!isServer) {

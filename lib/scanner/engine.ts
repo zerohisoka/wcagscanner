@@ -1,5 +1,4 @@
-import puppeteer from 'puppeteer-core'
-import chromium from '@sparticuz/chromium-min'
+import * as axe from 'axe-core'
 
 export interface ScanViolation {
   id: string
@@ -35,59 +34,43 @@ export interface ScanResult {
 }
 
 export async function runScan(url: string): Promise<ScanResult> {
-  let browser = null
+  const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN!
+
+  // Connect to browserless remote Chrome
+  const puppeteer = require('puppeteer-core')
+
+  const browser = await puppeteer.connect({
+    browserWSEndpoint: `wss://production-sfo.browserless.io?token=${BROWSERLESS_TOKEN}`,
+  })
+
+  let page = null
 
   try {
-    browser = await puppeteer.launch({
-      args: [
-        ...chromium.args,
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins,site-per-process',
-      ],
-      defaultViewport: { width: 1280, height: 720 },
-      executablePath: await chromium.executablePath(
-        'https://github.com/Sparticuz/chromium/releases/download/v127.0.0/chromium-v127.0.0-pack.tar'
-      ),
-      headless: true,
-    })
+    page = await browser.newPage()
 
-    const page = await browser.newPage()
-
-    // Disable CSP so we can inject scripts
     await page.setBypassCSP(true)
 
-    // Set user agent to avoid bot detection
     await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36'
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     )
 
-    // Navigate to URL
-    try {
-      await page.goto(url, {
-        waitUntil: 'domcontentloaded',
-        timeout: 25000,
-      })
-    } catch (e) {
-      console.log('Navigation warning:', e)
-    }
+    await page.goto(url, {
+      waitUntil: 'domcontentloaded',
+      timeout: 25000,
+    })
 
-    // Wait for page to settle
     await new Promise(r => setTimeout(r, 2000))
 
-    // Use axe-core 4.7.2 — stable version without mask bug
+    // Inject axe-core using callback style
     await page.addScriptTag({
       url: 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.7.2/axe.min.js'
     })
 
-    // Wait for axe
     await page.waitForFunction(
       () => typeof (window as any).axe !== 'undefined',
       { timeout: 10000 }
     )
 
-    // Run axe with simplified config
     const rawResults = await page.evaluate(() => {
       return new Promise((resolve, reject) => {
         ;(window as any).axe.run(
@@ -105,7 +88,6 @@ export async function runScan(url: string): Promise<ScanResult> {
               return
             }
 
-            // Extract only primitives inside browser context
             const violations = results.violations.map((v: any) => ({
               id: String(v.id || ''),
               impact: String(v.impact || 'minor'),
@@ -132,33 +114,20 @@ export async function runScan(url: string): Promise<ScanResult> {
     const data = rawResults as any
     const violations: ScanViolation[] = data.violations || []
 
-    // Calculate score
     let deductions = 0
     let critical = 0, serious = 0, moderate = 0, minor = 0
 
     violations.forEach((v) => {
       switch (v.impact) {
-        case 'critical':
-          critical++
-          deductions += 8
-          break
-        case 'serious':
-          serious++
-          deductions += 4
-          break
-        case 'moderate':
-          moderate++
-          deductions += 2
-          break
-        default:
-          minor++
-          deductions += 0.5
+        case 'critical': critical++; deductions += 8; break
+        case 'serious': serious++; deductions += 4; break
+        case 'moderate': moderate++; deductions += 2; break
+        default: minor++; deductions += 0.5
       }
     })
 
     const score = Math.max(0, Math.min(100, Math.round(100 - deductions)))
 
-    // Big six
     const bigSix = {
       contrast: violations.filter(v => v.id === 'color-contrast').length,
       altText: violations.filter(v => v.id === 'image-alt').length,
@@ -182,8 +151,7 @@ export async function runScan(url: string): Promise<ScanResult> {
     }
 
   } finally {
-    if (browser) {
-      await browser.close()
-    }
+    if (page) await page.close()
+    await browser.disconnect()
   }
 }
