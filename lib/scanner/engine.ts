@@ -5,13 +5,6 @@ import { discoverPages } from './crawler';
 
 const SCAN_TIMEOUT = 30000;
 
-// Instead of trying to resolve axe-core from inside a webpack-compiled module
-// (where require('fs'), process.cwd(), etc. may be shimmed), the caller
-// (the API route handler — real Node.js context) is expected to read the
-// axe-core source and pass it in via the optional `axeCoreSource` parameter.
-// If omitted, we fall back to the local read (which works in plain Node but
-// may fail in Next.js webpack-compiled bundles).
-
 interface AxeViolation {
   id: string;
   impact: string;
@@ -184,15 +177,10 @@ export async function runScan(params: RunScanParams): Promise<ScanOutput> {
           timeout: SCAN_TIMEOUT,
         });
 
-        // Inject axe-core — prefer caller-provided source (read in real Node.js),
-        // fall back to local fs read (works outside webpack-compiled bundles)
-        const finalSource = axeCoreSource || (() => {
-          const _fs = require('fs');
-          const _path = require('path');
-          const root = process.cwd();
-          return _fs.readFileSync(_path.join(root, 'node_modules', 'axe-core', 'axe.js'), 'utf8');
-        })();
-        await page.addScriptTag({ content: finalSource });
+        // Inject axe-core using require('axe-core').source — the module exports
+        // its own source as a string. No filesystem reads needed. Works on Vercel.
+        const axeSourceContent = axeCoreSource || require('axe-core').source;
+        await page.addScriptTag({ content: axeSourceContent });
 
         // Run axe
         const results: AxeResult = await page.evaluate(

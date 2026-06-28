@@ -5,16 +5,30 @@ const nextConfig = {
       { protocol: 'https', hostname: '**' },
     ],
   },
+  experimental: {
+    serverComponentsExternalPackages: ['puppeteer', 'chrome-aws-lambda', '@react-pdf/renderer'],
+  },
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
         puppeteer: false,
         fs: false,
+        path: false,
         net: false,
         tls: false,
         child_process: false,
       };
+    }
+    // For server-side: keep fs/path available for puppeteer runtime,
+    // but mark puppeteer as external so it's not bundled
+    if (isServer) {
+      config.externals = [
+        ...(config.externals || []),
+        'puppeteer',
+        'puppeteer-core',
+        'chrome-aws-lambda',
+      ];
     }
     return config;
   },

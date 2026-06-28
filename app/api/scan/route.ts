@@ -129,18 +129,9 @@ async function triggerScan(
     // Mark as running
     await db.from('scans').update({ status: 'running' }).eq('id', scanId);
 
-    // Read axe-core source HERE (real Node.js context, not webpack-compiled)
-    // and pass it to the scan engine to avoid path-resolution issues.
-    const fs = await import('fs');
-    const path = await import('path');
-    const axeCoreSource = fs.readFileSync(
-      path.join(process.cwd(), 'node_modules', 'axe-core', 'axe.js'),
-      'utf8',
-    );
-
     // Dynamic import to avoid bundling puppeteer in edge
     const { runScan } = await import('@/lib/scanner/engine');
-    const result = await runScan({ url, maxPages, wcagLevel, axeCoreSource });
+    const result = await runScan({ url, maxPages, wcagLevel });
 
     // Update scan record
     const { error: updateError } = await db
