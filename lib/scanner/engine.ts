@@ -2,6 +2,8 @@ import type { ScanViolation, BigSixCounts } from '@/types/scan';
 import { calculateComplianceScore, calculateBigSix } from './scoring';
 import { getFixGuide, getFixGuideDescription } from './violations';
 import { discoverPages } from './crawler';
+import puppeteer from 'puppeteer-core'
+import chromium from '@sparticuz/chromium'
 
 const SCAN_TIMEOUT = 30000;
 
@@ -147,19 +149,11 @@ export async function runScan(params: RunScanParams): Promise<ScanOutput> {
   let pagesScanned = 0;
 
   try {
-    const puppeteer = require('puppeteer');
-
     browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-      ],
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
     });
 
     const scanPage = async (pageUrl: string) => {
@@ -177,10 +171,9 @@ export async function runScan(params: RunScanParams): Promise<ScanOutput> {
           timeout: SCAN_TIMEOUT,
         });
 
-        // Inject axe-core using require('axe-core').source — the module exports
-        // its own source as a string. No filesystem reads needed. Works on Vercel.
-        const axeSourceContent = axeCoreSource || require('axe-core').source;
-        await page.addScriptTag({ content: axeSourceContent });
+        // Inject axe-core
+        const axeSource = require('axe-core').source
+        await page.addScriptTag({ content: axeSource })
 
         // Run axe
         const results: AxeResult = await page.evaluate(

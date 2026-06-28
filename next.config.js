@@ -6,7 +6,7 @@ const nextConfig = {
     ],
   },
   experimental: {
-    serverComponentsExternalPackages: ['puppeteer', 'chrome-aws-lambda', '@react-pdf/renderer'],
+    serverComponentsExternalPackages: ['puppeteer-core', '@sparticuz/chromium', '@react-pdf/renderer'],
   },
   webpack: (config, { isServer }) => {
     if (!isServer) {
