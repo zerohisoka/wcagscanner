@@ -131,22 +131,22 @@ async function triggerScan(
 
     // Dynamic import to avoid bundling puppeteer in edge
     const { runScan } = await import('@/lib/scanner/engine');
-    const result = await runScan({ url, maxPages, wcagLevel });
+    const result = await runScan(url);
 
-    // Update scan record
+    // Update scan record with new flat ScanResult structure
     const { error: updateError } = await db
       .from('scans')
       .update({
-        status: result.scan.status,
-        pages_scanned: result.scan.pages_scanned,
-        compliance_score: result.scan.compliance_score,
-        total_violations: result.scan.total_violations,
-        critical_count: result.scan.critical_count,
-        serious_count: result.scan.serious_count,
-        moderate_count: result.scan.moderate_count,
-        minor_count: result.scan.minor_count,
-        big_six: result.scan.big_six as any,
-        error_message: result.scan.error_message,
+        status: 'completed',
+        pages_scanned: 1,
+        compliance_score: result.score,
+        total_violations: result.totalViolations,
+        critical_count: result.critical,
+        serious_count: result.serious,
+        moderate_count: result.moderate,
+        minor_count: result.minor,
+        big_six: result.bigSix as any,
+        error_message: null,
         completed_at: new Date().toISOString(),
       })
       .eq('id', scanId);
@@ -155,21 +155,21 @@ async function triggerScan(
       console.error('Failed to update scan:', updateError);
     }
 
-    // Insert violations
+    // Insert violations — mapped from new ScanViolation structure
     if (result.violations.length > 0) {
       const violationsToInsert = result.violations.map((v) => ({
         scan_id: scanId,
-        rule_id: v.rule_id,
-        rule_description: v.rule_description,
+        rule_id: v.id,
+        rule_description: v.description?.slice(0, 500) || v.help?.slice(0, 500) || '',
         impact: v.impact,
-        wcag_criterion: v.wcag_criterion,
-        wcag_level: v.wcag_level,
-        page_url: v.page_url,
-        element_html: v.element_html?.slice(0, 1000),
-        element_selector: v.element_selector?.slice(0, 500),
-        fix_summary: v.fix_summary?.slice(0, 500),
-        fix_detail: v.fix_detail?.slice(0, 2000),
-        help_url: v.help_url,
+        wcag_criterion: 'N/A',
+        wcag_level: wcagLevel,
+        page_url: result.url,
+        element_html: v.nodes?.[0]?.html?.slice(0, 1000) || '',
+        element_selector: v.nodes?.[0]?.target?.join(' ')?.slice(0, 500) || '',
+        fix_summary: v.help?.slice(0, 500) || '',
+        fix_detail: v.description?.slice(0, 2000) || '',
+        help_url: v.helpUrl || '',
       }));
 
       const { error: violationsError } = await db
