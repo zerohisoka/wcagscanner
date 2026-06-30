@@ -1,4 +1,5 @@
 # WCAG Scanner — Automated Accessibility Compliance Audits
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/dobhalvaibhav/WCAG-SCANNER-AND-COMPILANCE?quickstart=1)
 
 > **"Build honestly. No overlay widgets."**
 
